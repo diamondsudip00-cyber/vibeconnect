@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VibeConnect — Ultra-Clean Free P2P Video Chat</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    body {
+      background: radial-gradient(circle at top left, #1e1b4b, #090d16 55%, #020617);
+      color: #f8fafc;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .glass {
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .glass-light {
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .mirror {
+      transform: scaleX(-1);
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
+  </style>
+</head>
+<body class="flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
+
+  <!-- Top Navbar -->
+  <header class="w-full px-6 py-4 flex items-center justify-between border-b border-white/10 glass sticky top-0 z-30">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2.3" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-lg font-extrabold tracking-tight bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">VibeConnect</h1>
+        <p class="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> End-to-End P2P Encrypted
+        </p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div id="statusBadge" class="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-light text-xs font-medium text-slate-300">
+        <span class="w-2 h-2 rounded-full bg-amber-400" id="statusDot"></span>
+        <span id="statusText">Initializing Camera...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+    
+    <!-- Left / Center Video Stage (8 cols) -->
+    <div class="lg:col-span-8 flex flex-col gap-4">
+      
+      <!-- Connection Lobby Bar -->
+      <div class="glass rounded-2xl p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-xl">
+        <div class="flex items-center gap-2.5 flex-1">
+          <div class="px-3 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-xs text-indigo-300 font-semibold whitespace-nowrap">
+            Your ID:
+          </div>
+          <input id="myPeerId" type="text" readonly value="Generating..." 
+            class="w-full bg-slate-900/80 border border-white/10 rounded-xl px-3.5 py-2 text-sm font-mono text-white focus:outline-none" />
+          <button onclick="copyMyId()" id="copyBtn"
+            class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition text-xs font-semibold text-white whitespace-nowrap">
+            Copy ID
+          </button>
+        </div>
+
+        <div class="h-px md:h-8 w-full md:w-px bg-white/10"></div>
+
+        <div class="flex items-center gap-2 flex-1">
+          <input id="remotePeerId" type="text" placeholder="Paste friend's ID to connect..." 
+            class="w-full bg-slate-900/80 border border-white/10 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-sm text-white placeholder-slate-400 focus:outline-none transition" />
+          <button onclick="connectToPeer()" id="callBtn"
+            class="px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 active:scale-95 transition text-sm font-bold text-white shadow-lg shadow-indigo-600/30 whitespace-nowrap">
+            Connect
+          </button>
+        </div>
+      </div>
+
+      <!-- Video Arena -->
+      <div class="relative flex-1 min-h-[380px] md:min-h-[480px] rounded-3xl overflow-hidden glass border border-white/10 shadow-2xl bg-slate-950 flex items-center justify-center">
+        
+        <!-- Remote Video (Full Stage) -->
+        <video id="remoteVideo" autoplay playsinline class="w-full h-full object-cover hidden"></video>
+
+        <!-- Waiting Placeholder -->
+        <div id="waitingScreen" class="text-center p-8 max-w-md mx-auto flex flex-col items-center">
+          <div class="w-20 h-20 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mb-5 relative">
+            <div class="absolute inset-0 rounded-full bg-indigo-500/20 animate-ping"></div>
+            <svg class="w-9 h-9 text-indigo-400" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+          </div>
+          <h2 class="text-xl font-bold text-white mb-2">Ready for Instant Video Chat</h2>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Share <span class="text-indigo-400 font-semibold">Your ID</span> above with a friend, or paste their ID and hit <span class="text-white font-semibold">Connect</span>. Free forever, zero signup.
+          </p>
+        </div>
+
+        <!-- Local Video (Floating Picture-in-Picture) -->
+        <div class="absolute bottom-20 right-4 w-32 sm:w-44 aspect-video rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl bg-slate-900 z-20 group">
+          <video id="localVideo" autoplay muted playsinline class="w-full h-full object-cover mirror"></video>
+          <span class="absolute bottom-1.5 left-2 text-[10px] font-semibold bg-black/60 px-2 py-0.5 rounded-md text-white backdrop-blur-sm">You</span>
+        </div>
+
+        <!-- Floating Bottom Controls -->
+        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 px-5 py-2.5 rounded-full glass border border-white/15 shadow-2xl z-20">
+          <!-- Mic Toggle -->
+          <button onclick="toggleMic()" id="micBtn" title="Mute / Unmute"
+            class="w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition active:scale-90">
+            <svg id="micIconOn" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+            </svg>
+            <svg id="micIconOff" class="w-5 h-5 hidden text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
+            </svg>
+          </button>
+
+          <!-- Camera Toggle -->
+          <button onclick="toggleCam()" id="camBtn" title="Camera On / Off"
+            class="w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition active:scale-90">
+            <svg id="camIconOn" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+            </svg>
+            <svg id="camIconOff" class="w-5 h-5 hidden text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+            </svg>
+          </button>
+
+          <!-- Screen Share -->
+          <button onclick="shareScreen()" title="Share Screen"
+            class="hidden sm:flex w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 items-center justify-center text-white transition active:scale-90">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+            </svg>
+          </button>
+
+          <!-- End Call -->
+          <button onclick="endCall()" title="End Call"
+            class="w-12 h-11 rounded-full bg-rose-600 hover:bg-rose-500 flex items-center justify-center text-white shadow-lg shadow-rose-600/40 transition active:scale-90">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Live Text Chat Panel (4 cols) -->
+    <aside class="lg:col-span-4 glass rounded-3xl flex flex-col overflow-hidden border border-white/10 shadow-2xl min-h-[340px]">
+      <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+          <h3 class="font-bold text-sm text-white">Live Room Chat</h3>
+        </div>
+        <span class="text-[11px] text-slate-400">Instant P2P</span>
+      </div>
+
+      <!-- Messages Feed -->
+      <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3 text-sm">
+        <div class="text-center text-xs text-slate-400 bg-white/5 rounded-xl py-2.5 px-3">
+          Messages are sent directly between peers and are never stored on any server.
+        </div>
+      </div>
+
+      <!-- Message Input -->
+      <form onsubmit="sendMessage(event)" class="p-3 border-t border-white/10 flex items-center gap-2 bg-slate-950/40">
+        <input id="chatInput" type="text" placeholder="Type a friendly message..." 
+          class="flex-1 bg-white/5 border border-white/10 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none" />
+        <button type="submit" 
+          class="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition active:scale-95">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+          </svg>
+        </button>
+      </form>
+    </aside>
+
+  </main>
+
+  <footer class="text-center py-4 text-xs text-slate-500 border-t border-white/5">
+    VibeConnect • Free, Fast & Friendly Peer-to-Peer Video Calling
+  </footer>
+
+  <script>
+    let localStream = null;
+    let peer = null;
+    let currentCall = null;
+    let dataConn = null;
+    let isMicOn = true;
+    let isCamOn = true;
+
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const waitingScreen = document.getElementById('waitingScreen');
+    const statusText = document.getElementById('statusText');
+    const statusDot = document.getElementById('statusDot');
+    const chatMessages = document.getElementById('chatMessages');
+
+    function setStatus(text, colorClass = 'bg-emerald-400') {
+      statusText.textContent = text;
+      statusDot.className = `w-2 h-2 rounded-full ${colorClass}`;
+    }
+
+    // Generate short friendly ID
+    function makeShortId() {
+      return 'vibe-' + Math.random().toString(36).substring(2, 7);
+    }
+
+    // Initialize Camera & PeerJS
+    async function init() {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localVideo.srcObject = localStream;
+        setStatus('Ready to Connect', 'bg-emerald-400');
+      } catch (err) {
+        setStatus('Camera/Mic Permission Needed', 'bg-rose-500');
+        appendMessage('System', 'Please allow camera & microphone access in your browser settings to start video chat.', 'system');
+      }
+
+      peer = new Peer(makeShortId());
+
+      peer.on('open', (id) => {
+        document.getElementById('myPeerId').value = id;
+      });
+
+      // Incoming Video Call
+      peer.on('call', (call) => {
+        if (currentCall) currentCall.close();
+        currentCall = call;
+        call.answer(localStream);
+        setupCallEvents(call);
+        setStatus('Connected in Call', 'bg-indigo-400');
+      });
+
+      // Incoming Text Chat Connection
+      peer.on('connection', (conn) => {
+        dataConn = conn;
+        setupDataEvents(conn);
+      });
+    }
+
+    function connectToPeer() {
+      const remoteId = document.getElementById('remotePeerId').value.trim();
+      if (!remoteId) return alert('Please paste your friend’s ID first!');
+      if (!localStream) return alert('Please allow camera/microphone permissions first.');
+
+      setStatus('Connecting...', 'bg-amber-400');
+
+      // Start Media Call
+      const call = peer.call(remoteId, localStream);
+      currentCall = call;
+      setupCallEvents(call);
+
+      // Start Data Chat Channel
+      const conn = peer.connect(remoteId);
+      dataConn = conn;
+      setupDataEvents(conn);
+    }
+
+    function setupCallEvents(call) {
+      call.on('stream', (remoteStream) => {
+        remoteVideo.srcObject = remoteStream;
+        remoteVideo.classList.remove('hidden');
+        waitingScreen.classList.add('hidden');
+        setStatus('Live Connected', 'bg-emerald-400');
+      });
+
+      call.on('close', () => {
+        resetRemoteStage();
+      });
+    }
+
+    function setupDataEvents(conn) {
+      conn.on('open', () => {
+        appendMessage('System', 'Connected to live room chat!', 'system');
+      });
+      conn.on('data', (msg) => {
+        appendMessage('Friend', msg, 'remote');
+      });
+    }
+
+    function sendMessage(e) {
+      e.preventDefault();
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text) return;
+
+      appendMessage('You', text, 'local');
+      if (dataConn && dataConn.open) {
+        dataConn.send(text);
+      }
+      input.value = '';
+    }
+
+    function appendMessage(sender, text, type) {
+      const div = document.createElement('div');
+      if (type === 'system') {
+        div.className = 'text-center text-xs text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 rounded-xl py-2 px-3';
+        div.textContent = text;
+      } else if (type === 'local') {
+        div.className = 'flex flex-col items-end';
+        div.innerHTML = `<span class="text-[10px] text-slate-400 mb-1">You</span>
+          <div class="bg-indigo-600 text-white px-3.5 py-2 rounded-2xl rounded-tr-sm max-w-[85%] break-words shadow">${escapeHtml(text)}</div>`;
+      } else {
+        div.className = 'flex flex-col items-start';
+        div.innerHTML = `<span class="text-[10px] text-slate-400 mb-1">Friend</span>
+          <div class="bg-white/10 text-slate-100 px-3.5 py-2 rounded-2xl rounded-tl-sm max-w-[85%] break-words">${escapeHtml(text)}</div>`;
+      }
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    }
+
+    function toggleMic() {
+      if (!localStream) return;
+      isMicOn = !isMicOn;
+      localStream.getAudioTracks().forEach(t => t.enabled = isMicOn);
+      document.getElementById('micIconOn').classList.toggle('hidden', !isMicOn);
+      document.getElementById('micIconOff').classList.toggle('hidden', isMicOn);
+      document.getElementById('micBtn').classList.toggle('bg-rose-500/20', !isMicOn);
+    }
+
+    function toggleCam() {
+      if (!localStream) return;
+      isCamOn = !isCamOn;
+      localStream.getVideoTracks().forEach(t => t.enabled = isCamOn);
+      document.getElementById('camIconOn').classList.toggle('hidden', !isCamOn);
+      document.getElementById('camIconOff').classList.toggle('hidden', isCamOn);
+      document.getElementById('camBtn').classList.toggle('bg-rose-500/20', !isCamOn);
+    }
+
+    async function shareScreen() {
+      try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const screenTrack = screenStream.getVideoTracks()[0];
+        localVideo.srcObject = screenStream;
+        localVideo.classList.remove('mirror');
+
+        if (currentCall && currentCall.peerConnection) {
+          const sender = currentCall.peerConnection.getSenders().find(s => s.track.kind === 'video');
+          if (sender) sender.replaceTrack(screenTrack);
+        }
+
+        screenTrack.onended = () => {
+          localVideo.srcObject = localStream;
+          localVideo.classList.add('mirror');
+          if (currentCall && currentCall.peerConnection) {
+            const sender = currentCall.peerConnection.getSenders().find(s => s.track.kind === 'video');
+            if (sender) sender.replaceTrack(localStream.getVideoTracks()[0]);
+          }
+        };
+      } catch (err) {
+        console.log('Screen share cancelled');
+      }
+    }
+
+    function endCall() {
+      if (currentCall) currentCall.close();
+      if (dataConn) dataConn.close();
+      resetRemoteStage();
+    }
+
+    function resetRemoteStage() {
+      remoteVideo.srcObject = null;
+      remoteVideo.classList.add('hidden');
+      waitingScreen.classList.remove('hidden');
+      setStatus('Call Ended • Ready', 'bg-amber-400');
+    }
+
+    function copyMyId() {
+      const idInput = document.getElementById('myPeerId');
+      navigator.clipboard.writeText(idInput.value);
+      const btn = document.getElementById('copyBtn');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy ID', 1800);
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
